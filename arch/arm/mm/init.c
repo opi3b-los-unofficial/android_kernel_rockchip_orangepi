@@ -25,6 +25,7 @@
 #include <linux/dma-contiguous.h>
 #include <linux/sizes.h>
 #include <linux/stop_machine.h>
+#include <linux/swiotlb.h>
 
 #include <asm/cp15.h>
 #include <asm/mach-types.h>
@@ -509,6 +510,10 @@ void __init mem_init(void)
 	extern u32 itcm_end;
 #endif
 
+#ifdef CONFIG_ARM_LPAE
+	swiotlb_init(1);
+#endif
+
 	set_max_mapnr(pfn_to_page(max_pfn) - mem_map);
 
 	/* this will put all unused low memory onto the freelists */
@@ -543,10 +548,10 @@ void __init mem_init(void)
 #ifdef CONFIG_MODULES
 			"    modules : 0x%08lx - 0x%08lx   (%4ld MB)\n"
 #endif
-			"      .text : 0x%p" " - 0x%p" "   (%4td kB)\n"
-			"      .init : 0x%p" " - 0x%p" "   (%4td kB)\n"
-			"      .data : 0x%p" " - 0x%p" "   (%4td kB)\n"
-			"       .bss : 0x%p" " - 0x%p" "   (%4td kB)\n",
+			"      .text : 0x%px" " - 0x%px" "   (%4td kB)\n"
+			"      .init : 0x%px" " - 0x%px" "   (%4td kB)\n"
+			"      .data : 0x%px" " - 0x%px" "   (%4td kB)\n"
+			"       .bss : 0x%px" " - 0x%px" "   (%4td kB)\n",
 
 			MLK(VECTORS_BASE, VECTORS_BASE + PAGE_SIZE),
 #ifdef CONFIG_HAVE_TCM

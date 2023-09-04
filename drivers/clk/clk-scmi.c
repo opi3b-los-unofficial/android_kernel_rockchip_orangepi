@@ -69,7 +69,7 @@ static int scmi_clk_set_rate(struct clk_hw *hw, unsigned long rate,
 {
 	struct scmi_clk *clk = to_scmi_clk(hw);
 
-	return clk->handle->clk_ops->rate_set(clk->handle, clk->id, 0, rate);
+	return clk->handle->clk_ops->rate_set(clk->handle, clk->id, rate);
 }
 
 static int scmi_clk_enable(struct clk_hw *hw)
@@ -202,7 +202,21 @@ static struct scmi_driver scmi_clocks_driver = {
 	.probe = scmi_clocks_probe,
 	.id_table = scmi_id_table,
 };
+#ifdef CONFIG_ARCH_ROCKCHIP
+static int __init scmi_clocks_driver_init(void)
+{
+	return scmi_register(&scmi_clocks_driver);
+}
+subsys_initcall_sync(scmi_clocks_driver_init);
+
+static void __exit scmi_clocks_driver_exit(void)
+{
+	scmi_unregister(&scmi_clocks_driver);
+}
+module_exit(scmi_clocks_driver_exit);
+#else
 module_scmi_driver(scmi_clocks_driver);
+#endif
 
 MODULE_AUTHOR("Sudeep Holla <sudeep.holla@arm.com>");
 MODULE_DESCRIPTION("ARM SCMI clock driver");

@@ -1,0 +1,107 @@
+/dts-v1/;
+#include "rk3566-orangepi-cm4.dts"
+
+/ {
+	model = "Rockchip RK3566 OPi 3B";
+	compatible = "rockchip,rk3566-orangepi-3b", "rockchip,rk3566";
+
+	vcc5v0_host: vcc5v0-host-regulator {
+		compatible = "regulator-fixed";
+		enable-active-high;
+		gpio = <&gpio0 RK_PA6 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&vcc5v0_host_en>;
+		regulator-name = "vcc5v0_host";
+		regulator-always-on;
+	};
+
+	vcc5v0_otg: vcc5v0-otg-regulator {
+		compatible = "regulator-fixed";
+		//enable-active-high;
+		//gpio = <&gpio0 RK_PC6 GPIO_ACTIVE_HIGH>;
+		//pinctrl-names = "default";
+		//pinctrl-0 = <&vcc5v0_otg_en>;
+
+		// OTG PATCH START
+		enable-active-high;
+		gpio = <&gpio0 RK_PA5 GPIO_ACTIVE_HIGH>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&vcc5v0_otg_en>;
+		// OTG PATCH END
+
+		regulator-name = "vcc5v0_otg";
+	};
+
+	fan: pwm-fan {
+		compatible = "pwm-fan";
+		#cooling-cells = <2>;
+		pwms = <&pwm7 0 50000 0>;
+		cooling-levels = <0 50 100 150 200 255>;
+		rockchip,temp-trips = <
+			50000   1
+			55000   2
+			60000   3
+			65000   4
+			70000   5
+		>;
+
+		status = "okay";
+	};
+
+	unisoc_uwe_bsp: uwe-bsp {
+			compatible = "unisoc,uwe_bsp";
+			wl-reg-on = <&gpio0 RK_PD3 GPIO_ACTIVE_HIGH>;
+			bt-reg-on = <&gpio2 RK_PB7 GPIO_ACTIVE_HIGH>;
+			wl-wake-host-gpio = <&gpio0 RK_PD6 GPIO_ACTIVE_HIGH>;
+			bt-wake-host-gpio = <&gpio2 RK_PC0 GPIO_ACTIVE_HIGH>;
+			//sdio-ext-int-gpio = <&gpio2 RK_PC1 GPIO_ACTIVE_HIGH>;
+			unisoc,btwf-file-name = "/vendor/etc/firmware/wcnmodem.bin";
+			//adma-tx;
+			//adma-rx;
+			data-irq;
+			blksz-512;
+			keep-power-on;
+			status = "okay";
+	};
+
+	sprd-mtty {
+			compatible = "sprd,mtty";
+			sprd,name = "ttyBT";
+			status = "okay";
+	};
+};
+
+// OTG PATCH START
+&u2phy0_otg {
+	vbus-supply = <&vcc5v0_otg>;
+	status = "okay";
+};
+// OTG PATCH END
+
+&wireless_bluetooth {
+	status = "disabled";
+};
+
+&wireless_wlan {
+	status = "disabled";
+};
+
+&vcc3v3_pcie {
+	enable-active-high;
+	gpio = <&gpio0 RK_PB7 GPIO_ACTIVE_HIGH>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pcie_drv>;
+};
+
+&pinctrl {
+	pcie {
+		pcie_drv: pcie-drv {
+			rockchip,pins =
+				<0 RK_PB7 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+};
+
+&pwm7 {
+	status = "okay";
+};

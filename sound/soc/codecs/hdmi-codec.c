@@ -15,6 +15,7 @@
 #include <linux/module.h>
 #include <linux/string.h>
 #include <sound/core.h>
+#include <sound/jack.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -285,6 +286,9 @@ struct hdmi_codec_priv {
 	uint8_t eld[MAX_ELD_BYTES];
 	struct snd_pcm_chmap *chmap_info;
 	unsigned int chmap_idx;
+	unsigned int mode;
+	struct snd_soc_jack *jack;
+	unsigned int jack_status;
 };
 
 static const struct snd_soc_dapm_widget hdmi_widgets[] = {
@@ -313,6 +317,36 @@ static int hdmi_eld_ctl_get(struct snd_kcontrol *kcontrol,
 
 	memcpy(ucontrol->value.bytes.data, hcp->eld, sizeof(hcp->eld));
 
+	return 0;
+}
+
+static int hdmi_audio_mode_info(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_info *uinfo)
+{
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->count = 1;
+	uinfo->value.integer.min = 0;
+	uinfo->value.integer.max = HBR;
+	return 0;
+}
+
+static int hdmi_audio_mode_get(struct snd_kcontrol *kcontrol,
+			       struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct hdmi_codec_priv *hcp = snd_soc_component_get_drvdata(component);
+
+	ucontrol->value.integer.value[0] = hcp->mode;
+	return 0;
+}
+
+static int hdmi_audio_mode_put(struct snd_kcontrol *kcontrol,
+			       struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_kcontrol_chip(kcontrol);
+	struct hdmi_codec_priv *hcp = snd_soc_component_get_drvdata(component);
+
+	hcp->mode = ucontrol->value.integer.value[0];
 	return 0;
 }
 
@@ -523,6 +557,7 @@ static int hdmi_codec_hw_params(struct snd_pcm_substream *substream,
 	hp.sample_width = params_width(params);
 	hp.sample_rate = params_rate(params);
 	hp.channels = params_channels(params);
+	hp.mode = hcp->mode;
 
 	return hcp->hcd.ops->hw_params(dai->dev->parent, hcp->hcd.data,
 				       &hcp->daifmt[dai->id], &hp);
@@ -661,6 +696,16 @@ static int hdmi_codec_pcm_new(struct snd_soc_pcm_runtime *rtd,
 		.get	= hdmi_eld_ctl_get,
 		.device	= rtd->pcm->device,
 	};
+	struct snd_kcontrol_new hdmi_mode_ctl = {
+		.access = SNDRV_CTL_ELEM_ACCESS_READ |
+			  SNDRV_CTL_ELEM_ACCESS_WRITE |
+			  SNDRV_CTL_ELEM_ACCESS_VOLATILE,
+		.iface = SNDRV_CTL_ELEM_IFACE_PCM,
+		.name = "AUDIO MODE",
+		.info = hdmi_audio_mode_info,
+		.get = hdmi_audio_mode_get,
+		.put = hdmi_audio_mode_put,
+	};
 	int ret;
 
 	dev_dbg(dai->dev, "%s()\n", __func__);
@@ -684,6 +729,15 @@ static int hdmi_codec_pcm_new(struct snd_soc_pcm_runtime *rtd,
 	if (!kctl)
 		return -ENOMEM;
 
+	ret = snd_ctl_add(rtd->card->snd_card, kctl);
+	if (ret < 0)
+		return ret;
+
+	/* add MODE ctl with the device number corresponding to the PCM stream */
+	kctl = snd_ctl_new1(&hdmi_mode_ctl, dai->component);
+	if (!kctl)
+		return -ENOMEM;
+
 	return snd_ctl_add(rtd->card->snd_card, kctl);
 }
 
@@ -698,6 +752,44 @@ static int hdmi_dai_probe(struct snd_soc_dai *dai)
 	dapm = snd_soc_component_get_dapm(dai->component);
 
 	return snd_soc_dapm_add_routes(dapm, &route, 1);
+}
+
+static void hdmi_codec_jack_report(struct hdmi_codec_priv *hcp,
+				   unsigned int jack_status)
+{
+	if (hcp->jack && jack_status != hcp->jack_status) {
+		snd_soc_jack_report(hcp->jack, jack_status, SND_JACK_LINEOUT);
+		hcp->jack_status = jack_status;
+	}
+}
+
+static void plugged_cb(struct device *dev, bool plugged)
+{
+	struct hdmi_codec_priv *hcp = dev_get_drvdata(dev);
+
+	if (plugged)
+		hdmi_codec_jack_report(hcp, SND_JACK_LINEOUT);
+	else
+		hdmi_codec_jack_report(hcp, 0);
+}
+
+static int hdmi_codec_set_jack(struct snd_soc_component *component,
+			       struct snd_soc_jack *jack,
+			       void *data)
+{
+	struct hdmi_codec_priv *hcp = snd_soc_component_get_drvdata(component);
+	int ret = -EOPNOTSUPP;
+
+	if (hcp->hcd.ops->hook_plugged_cb) {
+		hcp->jack = jack;
+		ret = hcp->hcd.ops->hook_plugged_cb(component->dev->parent,
+						    hcp->hcd.data,
+						    plugged_cb,
+						    component->dev);
+		if (ret)
+			hcp->jack = NULL;
+	}
+	return ret;
 }
 
 static const struct snd_soc_dai_driver hdmi_i2s_dai = {
@@ -751,6 +843,7 @@ static const struct snd_soc_component_driver hdmi_driver = {
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
 	.non_legacy_dai_naming	= 1,
+	.set_jack		= hdmi_codec_set_jack,
 };
 
 static int hdmi_codec_probe(struct platform_device *pdev)

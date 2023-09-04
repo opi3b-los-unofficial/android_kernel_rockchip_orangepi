@@ -48,6 +48,10 @@ modules.builtin
 #
 # Top-level generic files
 #
+/boot.img
+/kernel.img
+/resource.img
+/zboot.img
 /tags
 /TAGS
 /linux
@@ -132,3 +136,9 @@ all.config
 
 # Kdevelop4
 *.kdev4
+
+# for some files
+/configs/
+/out/
+/tests/
+/kernel/configs/
